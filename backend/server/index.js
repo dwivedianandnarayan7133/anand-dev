@@ -29,28 +29,45 @@ const skillRoutes = require('./routes/skills');
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-// ─── Connect to MongoDB ───────────────────────────────────────────────────────
-connectDB();
-
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
-// CORS — allow same-origin and localhost in dev
+// CORS — allow localhost in dev + Vercel production URL
 const allowedOrigins = [
   `http://localhost:${PORT}`,
   'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
   'http://127.0.0.1:3002',
   'http://127.0.0.1:5500', // VS Code Live Server
 ];
 
+// Allow any *.vercel.app domain + custom domain via env var
+if (process.env.CORS_ORIGIN) allowedOrigins.push(process.env.CORS_ORIGIN);
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
+    if (!origin) return callback(null, true); // allow server-to-server / curl
     if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Allow any vercel.app deployment (preview + production)
+    if (origin.endsWith('.vercel.app')) return callback(null, true);
     return callback(new Error(`CORS: origin ${origin} not allowed`));
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'x-admin-key'],
 }));
+
+// ─── Connect to MongoDB per-request (serverless-safe) ─────────────────────────
+// On Vercel, there is no persistent server startup. connectDB() uses a global
+// cache so it only opens ONE connection per warm container instance.
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('DB connection failed:', err.message);
+    res.status(503).json({ success: false, message: 'Database unavailable. Try again shortly.' });
+  }
+});
 
 // Parse JSON bodies (max 50kb to prevent payload attacks)
 app.use(express.json({ limit: '50kb' }));

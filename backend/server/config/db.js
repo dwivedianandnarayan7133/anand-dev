@@ -1,55 +1,67 @@
 /**
- * MongoDB connection helper using Mongoose.
- * Includes connection retry, clean error messages,
- * and graceful shutdown handling.
+ * MongoDB connection helper — Serverless-safe with connection caching.
+ *
+ * On Vercel, each serverless function invocation may reuse a warm container.
+ * We cache the mongoose connection so that reused containers don't open a
+ * new connection on every request (which would exhaust the Atlas connection pool).
  */
 
 'use strict';
 
 const mongoose = require('mongoose');
 
+// Cache the connection promise so warm Lambda/Vercel reuses it
+let cached = global._mongooseConnection;
+
+if (!cached) {
+  cached = global._mongooseConnection = { conn: null, promise: null };
+}
+
 /**
  * Connect to MongoDB with Mongoose.
  * Reads MONGO_URI from environment variables.
+ * Safe to call on every request — returns cached connection if already open.
  */
 async function connectDB() {
   const uri = process.env.MONGO_URI;
 
   if (!uri) {
-    console.error('❌  MONGO_URI is not defined in .env');
-    process.exit(1);
+    // Throw instead of process.exit — serverless functions must not call exit()
+    throw new Error('MONGO_URI environment variable is not defined. Set it in Vercel Environment Variables.');
+  }
+
+  // Return cached connection if already established
+  if (cached.conn) {
+    return cached.conn;
+  }
+
+  // Create the connection promise if not already pending
+  if (!cached.promise) {
+    const opts = {
+      serverSelectionTimeoutMS: 10000, // 10s timeout for Atlas cold starts
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10,               // limit connections for serverless
+      bufferCommands: false,         // fail fast if not connected
+    };
+
+    cached.promise = mongoose.connect(uri, opts).then((mongooseInstance) => {
+      console.log(`✅  MongoDB connected: ${mongooseInstance.connection.host}`);
+      console.log(`    Database: ${mongooseInstance.connection.name}`);
+      return mongooseInstance;
+    });
   }
 
   try {
-    const conn = await mongoose.connect(uri, {
-      // Mongoose 8+ no longer needs these options explicitly,
-      // but they're kept here for clarity & older compat.
-      serverSelectionTimeoutMS: 5000, // fail fast during dev
-      socketTimeoutMS: 45000,
-    });
-
-    console.log(`✅  MongoDB connected: ${conn.connection.host}`);
-    console.log(`    Database: ${conn.connection.name}`);
+    cached.conn = await cached.promise;
   } catch (err) {
+    // Reset so future calls retry rather than hanging on a failed promise
+    cached.promise = null;
     console.error(`❌  MongoDB connection error: ${err.message}`);
-    process.exit(1);
+    throw err; // Let the route handler return a 500 gracefully
   }
+
+  return cached.conn;
 }
 
-// Graceful shutdown — close mongoose on SIGINT (Ctrl+C)
-process.on('SIGINT', async () => {
-  await mongoose.connection.close();
-  console.log('\n🔌  MongoDB connection closed gracefully.');
-  process.exit(0);
-});
-
-// Connection event listeners for logging
-mongoose.connection.on('disconnected', () => {
-  console.warn('⚠️   MongoDB disconnected.');
-});
-
-mongoose.connection.on('reconnected', () => {
-  console.log('🔄  MongoDB reconnected.');
-});
-
 module.exports = connectDB;
+
