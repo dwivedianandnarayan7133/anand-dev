@@ -148,16 +148,16 @@ app.use('/api/*', (req, res) => {
 
 // ─── Serve Static Frontend ────────────────────────────────────────────────────
 // Serve all static assets from the project root
-app.use(express.static(path.join(__dirname, '..', '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Serve Admin Dashboard
 app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', '..', 'public', 'admin.html'));
+  res.sendFile(path.join(__dirname, '..', 'public', 'admin.html'));
 });
 
 // Catch-all: serve index.html for any non-API route (SPA support)
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────

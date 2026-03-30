@@ -2,11 +2,11 @@
   "name": "portfolio-anand",
   "version": "1.0.0",
   "description": "Anand Narayan Dwivedi — Full Stack Developer Portfolio with Express + MongoDB backend",
-  "main": "backend/server/index.js",
+  "main": "backend/index.js",
   "scripts": {
-    "start": "node backend/server/index.js",
-    "dev": "nodemon backend/server/index.js",
-    "seed": "node backend/server/scripts/seed.js"
+    "start": "node backend/index.js",
+    "dev": "nodemon backend/index.js",
+    "seed": "node backend/scripts/seed.js"
   },
   "keywords": [
     "portfolio",
